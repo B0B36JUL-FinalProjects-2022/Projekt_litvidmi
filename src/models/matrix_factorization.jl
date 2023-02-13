@@ -34,11 +34,6 @@ Flux.@functor MF
 struct MF_MSE_LOSS
 end
 
-# function (l::MF_RMSE_LOSS)(model::MF, user_id, item_id, y::Real)
-#     abs2(model(user_id, item_id) - y)
-# end
-
-
 (l::MF_MSE_LOSS)(model::MF, user_id::Int, item_id::Int, R::Matrix{<:Real}) = abs2(model(user_id, item_id) .- R[user_id, item_id])
 (l::MF_MSE_LOSS)(model::MF, user_id, item_id, y::Real) = abs2(model(user_id, item_id) - y)
 (l::MF_MSE_LOSS)(model::MF, (user_id, item_id), y::Real) = l(model, user_id, item_id, y)
@@ -46,7 +41,6 @@ end
 (l::MF_MSE_LOSS)(model::MF, x::Matrix, y::Vector) = mean(abs2.(model(x) .- y))
 (l::MF_MSE_LOSS)(model::MF, x::Vector, y::Real) = (abs2(model(x[1], x[2]) - y))
 
-# Flux.@functor MF_RMSE_LOSS
 
 function opt_step!(loss, m::MF, data, α)
     x, y = data[1]
@@ -57,17 +51,23 @@ function opt_step!(loss, m::MF, data, α)
     @. m.Q.weight -= α * dLdQ
 end
 
-function run_train_eval_loop!(loss, model::MF, X_train, y_train, X_test=nothing, y_test=nothing; num_epochs = 100, α = 1e-3)
-    train_error = zeros(num_epochs)
-    test_error = X_test !== nothing ? zeros(num_epochs) : nothing
+function run_train_eval_loop!(loss, model::MF, X_train, y_train, X_test=nothing, y_test=nothing; num_epochs = 10, α = 1e-3)
+    testmode!(model, true)
+    train_error = zeros(num_epochs + 1)
+    test_error = X_test !== nothing ? zeros(num_epochs + 1) : nothing
+    train_error[1] = rmse_movielens(model, X_train, y_train)
+    if X_test !== nothing test_error[1] = rmse_movielens(model, X_test, y_test) end
+
     for epoch in 1:num_epochs
+        trainmode!(model, true)
         for i in eachindex(y_train)
             user_id, item_id = X_train[i, :]
             data = [((user_id, item_id), y_train[i])] 
             opt_step!(loss, model, data, 1e-2)
         end
-        train_error[epoch] = rmse_movielens(model, X_train, y_train)
-        if X_test !== nothing test_error[epoch] = rmse_movielens(model, X_test, y_test) end
+        testmode!(model, true)
+        train_error[epoch + 1] = rmse_movielens(model, X_train, y_train)
+        if X_test !== nothing test_error[epoch + 1] = rmse_movielens(model, X_test, y_test) end
     end
 
     return train_error, test_error
@@ -77,18 +77,18 @@ function rmse_movielens(model::MF, X, y)
     cum_loss = 0 
     for i in eachindex(y)
         user_id, item_id = X[i, :]
-        cum_loss += norm(model(user_id, item_id) - y[i], 2)
+        cum_loss += sum((model(user_id, item_id) - y[i])^2)
     end
-    return cum_loss / length(y)
+    return sqrt(cum_loss / length(y))
 end
 
 function rmse_movielens_int(model::MF, X, y)
     cum_loss = 0 
     for i in eachindex(y)
         user_id, item_id = X[i, :]
-        cum_loss += norm(convert(Int, round(model(user_id, item_id))) - y[i], 2)
+        cum_loss += sum((convert.(Int, round(model(user_id, item_id))) - y[i])^2)
     end
-    return cum_loss / length(y)
+    return sqrt(cum_loss / length(y))
 end
 
 function right_predicted_movielens(model::MF, X, y; precision = 0.5)

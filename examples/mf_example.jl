@@ -35,7 +35,7 @@ plot(collect(1:num_epochs), train_error, label="train error", xlabel="epoch", yl
 
 
 
-# download and unpack the dataset to the parent directory
+# download and unpack the dataset to the parent directory if needed
 const dir = joinpath(dirname(@__FILE__), "..", "movie_data")
 get_movielens_data!(dir)
 
@@ -50,23 +50,32 @@ plot(histogram(df.rating, bins=5), xlabel="rating", ylabel="count")
 X, y = [df.user_id df.item_id], df.rating
 X_train, y_train, X_test, y_test = train_test_split(X, y)
 
-hidden_categories = 20
+hidden_categories = 30
 model = MF(hidden_categories, num_users, num_items)
+mse_loss = MF_MSE_LOSS()
 
-num_epochs = 50
-lr = 1e-2
+num_epochs = 10
+lr = 1e-1
 train_error, test_error = run_train_eval_loop!(mse_loss, model, X_train, y_train, X_test, y_test; num_epochs = num_epochs, α = lr)
 
 
 
 errors = hcat(train_error, test_error)
+
 plot(
-    collect(1:num_epochs), errors,
+    collect(1:num_epochs + 1), errors,
     label=["train error" "test_error"],
     xlabel="epoch", 
     ylabel="mse", 
     linewidth = [2 2]
     )
+    
+
+
+# train_error = run_train_eval_loop!(mse_loss, model, RX, Ry; num_epochs = num_epochs, α = lr)
+# plot(collect(1:num_epochs + 1), train_error, label="train error", xlabel="epoch", ylabel="mse",  linewidth = 2)
+# rmse_movielens_ixnt(model, RX, Ry)
+# right_predicted_movielens(model, RX, Ry)
 
 
 rmse_movielens(model, X_train, y_train)
