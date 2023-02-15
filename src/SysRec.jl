@@ -1,7 +1,10 @@
 module SysRec
 
-include("models/matrix_factorization.jl")
-include("models/autorec.jl")
+using Flux
+using Statistics
+using LinearAlgebra
+
+include("./models/abstract.jl")
 include("utils.jl")
 
 end

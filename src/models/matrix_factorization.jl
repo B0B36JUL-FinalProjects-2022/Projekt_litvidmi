@@ -1,12 +1,6 @@
-using Flux
-using Statistics
-using LinearAlgebra
+export MF, sgd_step!, run_train_eval_loop!
 
-export MF, MF_MSE_LOSS, opt_step!, run_train_eval_loop!,
-       rmse_movielens, rmse_movielens_int,
-       right_predicted_movielens, ui_matrix_to_movielens_form
-
-struct MF
+struct MF <: Recommender
     num_factors::Integer
     num_users::Integer
     num_items::Integer
@@ -31,18 +25,8 @@ end
 
 Flux.@functor MF
 
-struct MF_MSE_LOSS
-end
 
-(l::MF_MSE_LOSS)(model::MF, user_id::Int, item_id::Int, R::Matrix{<:Real}) = abs2(model(user_id, item_id) .- R[user_id, item_id])
-(l::MF_MSE_LOSS)(model::MF, user_id, item_id, y::Real) = abs2(model(user_id, item_id) - y)
-(l::MF_MSE_LOSS)(model::MF, (user_id, item_id), y::Real) = l(model, user_id, item_id, y)
-(l::MF_MSE_LOSS)(model::MF, x::Vector, y::Vector) = mean(abs2.(model.(x) .- y))
-(l::MF_MSE_LOSS)(model::MF, x::Matrix, y::Vector) = mean(abs2.(model(x) .- y))
-(l::MF_MSE_LOSS)(model::MF, x::Vector, y::Real) = (abs2(model(x[1], x[2]) - y))
-
-
-function opt_step!(loss, m::MF, data, α)
+function sgd_step!(loss::RecLoss, m::MF, data, α)
     x, y = data[1]
     grad = gradient(loss, m, x, y)[1]
     dLdP, dLdQ = grad.P.weight, grad.Q.weight
@@ -51,63 +35,38 @@ function opt_step!(loss, m::MF, data, α)
     @. m.Q.weight -= α * dLdQ
 end
 
-function run_train_eval_loop!(loss, model::MF, X_train, y_train, X_test=nothing, y_test=nothing; num_epochs = 10, α = 1e-3)
+function run_train_eval_loop!(
+    loss::RecLoss,
+    model::MF,
+    X_train, 
+    y_train, 
+    X_test=nothing, 
+    y_test=nothing; 
+    num_epochs = 10, 
+    α = 1e-3, 
+    verbose = true
+)
     testmode!(model, true)
     train_error = zeros(num_epochs + 1)
     test_error = X_test !== nothing ? zeros(num_epochs + 1) : nothing
     train_error[1] = rmse_movielens(model, X_train, y_train)
-    if X_test !== nothing test_error[1] = rmse_movielens(model, X_test, y_test) end
+    X_test !== nothing && (test_error[1] = rmse_movielens(model, X_test, y_test))
 
     for epoch in 1:num_epochs
         trainmode!(model, true)
         for i in eachindex(y_train)
             user_id, item_id = X_train[i, :]
             data = [((user_id, item_id), y_train[i])] 
-            opt_step!(loss, model, data, 1e-2)
+            sgd_step!(loss, model, data, 1e-2)
         end
         testmode!(model, true)
         train_error[epoch + 1] = rmse_movielens(model, X_train, y_train)
-        if X_test !== nothing test_error[epoch + 1] = rmse_movielens(model, X_test, y_test) end
+        X_test !== nothing && ((test_error[epoch + 1] = rmse_movielens(model, X_test, y_test)))
+        if verbose
+            print("epoch :$epoch, train_loss: $(train_error[epoch + 1])")
+            (X_test !== nothing) ? println("; test_loss: $(test_error[epoch + 1])") : println()
+        end
     end
 
     return train_error, test_error
-end
-
-function rmse_movielens(model::MF, X, y)
-    cum_loss = 0 
-    for i in eachindex(y)
-        user_id, item_id = X[i, :]
-        cum_loss += sum((model(user_id, item_id) - y[i])^2)
-    end
-    return sqrt(cum_loss / length(y))
-end
-
-function rmse_movielens_int(model::MF, X, y)
-    cum_loss = 0 
-    for i in eachindex(y)
-        user_id, item_id = X[i, :]
-        cum_loss += sum((convert.(Int, round(model(user_id, item_id))) - y[i])^2)
-    end
-    return sqrt(cum_loss / length(y))
-end
-
-function right_predicted_movielens(model::MF, X, y; precision = 0.5)
-    cum_loss = 0 
-    for i in eachindex(y)
-        user_id, item_id = X[i, :]
-        cum_loss += abs(model(user_id, item_id) - y[i]) <= precision
-    end
-    return cum_loss / length(y)
-end
-
-
-function ui_matrix_to_movielens_form(X)
-    m, n = size(X)
-    X1 = [j for i in 1:n, j in 1:m]
-    X2 = [j for i in 1:m, j in 1:n]'
-
-    x1 = collect(Iterators.flatten(X1))
-    x2 = collect(Iterators.flatten(X2))
-    y = collect(Iterators.flatten(X'))
-    return hcat(x1, x2), y
 end
