@@ -14,7 +14,7 @@ struct MF <: Recommender
 end
 
 
-function (m::MF)(user_id, item_id)
+function (m::MF)(user_id::Integer, item_id::Integer)
     return m.P.weight[user_id, :]' * m.Q.weight[item_id, :]
 end
 
@@ -26,38 +26,45 @@ end
 Flux.@functor MF
 
 
-function sgd_step!(loss::RecLoss, m::MF, data, α)
+function sgd_step!(loss::RecLoss, m::MF, data, α; λ = 0)
     x, y = data[1]
-    grad = gradient(loss, m, x, y)[1]
+    grad = gradient(loss, m, x, y, λ)[1]
     dLdP, dLdQ = grad.P.weight, grad.Q.weight
 
     @. m.P.weight -= α * dLdP
     @. m.Q.weight -= α * dLdQ
 end
 
+ 
+
 function run_train_eval_loop!(
     loss::RecLoss,
     model::MF,
     X_train, 
-    y_train, 
-    X_test=nothing, 
-    y_test=nothing; 
+    y_train;
+    X_test = nothing, 
+    y_test = nothing,
     num_epochs = 10, 
     α = 1e-3, 
-    verbose = true
+    λ = 0,
+    verbose = true,
+    batch_size = 1,
+    shuffle = true
 )
     testmode!(model, true)
     train_error = zeros(num_epochs + 1)
     test_error = X_test !== nothing ? zeros(num_epochs + 1) : nothing
     train_error[1] = rmse_movielens(model, X_train, y_train)
     X_test !== nothing && (test_error[1] = rmse_movielens(model, X_test, y_test))
+    λ_normed = λ * batch_size / length(y_train)
 
     for epoch in 1:num_epochs
         trainmode!(model, true)
-        for i in eachindex(y_train)
-            user_id, item_id = X_train[i, :]
-            data = [((user_id, item_id), y_train[i])] 
-            sgd_step!(loss, model, data, 1e-2)
+        batches = split_into_batches(length(y_train), batch_size; shuffle = shuffle)
+        for batch in batches
+            ui_pairs = X_train[batch, :]
+            data = [(ui_pairs, y_train[batch])] 
+            sgd_step!(loss, model, data, α; λ = λ_normed)
         end
         testmode!(model, true)
         train_error[epoch + 1] = rmse_movielens(model, X_train, y_train)

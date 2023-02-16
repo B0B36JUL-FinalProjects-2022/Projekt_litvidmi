@@ -43,14 +43,16 @@ end;
 function run_train_eval_loop!(
     loss::RecLoss,
     model::AutoRec,
-    X_train,
-    y_train,
-    X_test     = nothing,
-    y_test     = nothing;
-    num_epochs = 10,
-    α          = 1e-3,
-    λ          = 0,
-    verbose    = true
+    X_train, 
+    y_train;
+    X_test = nothing, 
+    y_test = nothing, 
+    num_epochs = 10, 
+    α = 1e-3, 
+    λ = 0,
+    verbose = true,
+    batch_size = 1,
+    shuffle = true
 )
     train_error = zeros(num_epochs + 1)
     test_error = X_test !== nothing ? zeros(num_epochs + 1) : nothing
@@ -60,12 +62,14 @@ function run_train_eval_loop!(
     (X_test !== nothing) && (test_error[1] = rmse_movielens(model, X_test, y_test))
 
     num_items = size(unique(X_train[:, 2]))[1]
-    λ_normed = λ / num_items
-    vec_to_learn = zeros(model.num_users)
+    λ_normed = λ * batch_size / num_items
+
+    vec_to_learn = (batch_size == 1) ? zeros(model.num_users) : zeros((model.num_users, batch_size))
     for epoch in 1:num_epochs
         trainmode!(model, true)
-        for i in 1:num_items
-            restore_item_vector!(vec_to_learn, X_train, y_train, i)
+        batches = split_into_batches(num_items, batch_size; shuffle = shuffle)
+        for batch in batches
+            restore_item_vector!(vec_to_learn, X_train, y_train, batch)
             x = y = vec_to_learn
             data = [(x, y)] 
             sgd_step!(loss, model, data, α; λ = λ_normed)

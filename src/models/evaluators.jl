@@ -1,8 +1,8 @@
 export rmse_movielens,
-       right_predicted_movielens
+       precision_movielens
 
 
-function rmse_movielens(model::AutoRec, X, y;)
+function rmse_movielens(model::AutoRec, X, y)
     cum_loss = 0 
     num_elems = 0
     num_items = length(unique(X[:, 2]))
@@ -18,13 +18,13 @@ function rmse_movielens(model::AutoRec, X, y;)
     return sqrt(cum_loss / num_elems)
 end
 
-function right_predicted_movielens(model::AutoRec, X, y; precision = 0.5)
+function precision_movielens(model::AutoRec, X, y; tolerance = 0.5)
     cum_loss = 0 
     num_items = length(unique(X[:, 2]))
     vec_to_restore = zeros(model.num_users)
     for i in 1:num_items
         restore_item_vector!(vec_to_restore, X, y, i)
-        cum_loss += sum(abs.(vec_to_restore - model(vec_to_restore)) .<= precision .* (vec_to_restore .!= 0))
+        cum_loss += sum(abs.(vec_to_restore - model(vec_to_restore)) .<= tolerance .* (vec_to_restore .!= 0))
         vec_to_restore *= 0
     end
     return cum_loss / (length(y))
@@ -39,11 +39,11 @@ function rmse_movielens(model::MF, X, y)
     return sqrt(cum_loss / length(y))
 end
 
-function right_predicted_movielens(model::MF, X, y; precision = 0.5)
+function precision_movielens(model::MF, X, y; tolerance = 0.5)
     cum_loss = 0 
     for i in eachindex(y)
         user_id, item_id = X[i, :]
-        cum_loss += abs(model(user_id, item_id) - y[i]) <= precision
+        cum_loss += abs(model(user_id, item_id) - y[i]) <= tolerance
     end
     return cum_loss / length(y)
 end

@@ -3,6 +3,8 @@ using SysRec
 using Plots
 using Flux
 using LinearAlgebra
+using BSON: @save, @load
+
 
 
 # simple example 
@@ -29,11 +31,28 @@ gradient(mse_loss, model, R[:, 1], R[:, 1], 0.1)[1]
 
 
 RX, Ry = ui_matrix_to_movielens_form(R)
-num_epochs = 1000
-lr = 1e-3
+num_epochs = 100
+lr = 1e-2
 
-train_error, _ = run_train_eval_loop!(mse_loss, model, RX, Ry; num_epochs = num_epochs, α = lr, λ = 0.1, verbose = false)
-plot(collect(1:num_epochs + 1), train_error, label="mse", xlabel="epoch", ylabel="train_error", linewidth = 2)
+train_error, _ = run_train_eval_loop!(
+    mse_loss,
+    model, 
+    RX, Ry; 
+    num_epochs = num_epochs, 
+    α = lr, 
+    λ = 0.1, 
+    verbose = false,
+    batch_size = 8
+)
+
+plot(
+    collect(1:num_epochs + 1), 
+    train_error, 
+    label="mse", 
+    xlabel="epoch", 
+    ylabel="train_error", 
+    linewidth = 2
+)
 
 
 # example on movielens
@@ -56,12 +75,23 @@ X_train, y_train, X_test, y_test = train_test_split(X, y)
 # create, train and evaluate a model
 #----------------------------
 hidden_categories = 500
-model = AutoRec(num_users, hidden_categories, dropout_rate = 0.1)
+model = AutoRec(num_users, hidden_categories, dropout_rate = 0.05)
 mse_loss = AUTOREC_MSE_LOSS()
-num_epochs = 10
-lr = 1e-3 * 2
+num_epochs = 50
+lr = 1e-2
 
-train_error, test_error = run_train_eval_loop!(mse_loss, model, X_train, y_train, X_test, y_test; num_epochs = num_epochs, α = lr, λ = 1e-1)
+train_error, test_error = run_train_eval_loop!(
+    mse_loss, 
+    model, 
+    X_train, 
+    y_train;
+    X_test = X_test, 
+    y_test = y_test,
+    num_epochs = num_epochs, 
+    α = lr, 
+    λ = 1e-2,
+    batch_size = 32
+)
 
 errors = hcat(train_error, test_error)
 plot(
@@ -73,7 +103,10 @@ plot(
 )
 
 rmse_movielens(model, X_train, y_train)
-right_predicted_movielens(model, X_train, y_train)
+precision_movielens(model, X_train, y_train)
 
 rmse_movielens(model, X_test, y_test)
-right_predicted_movielens(model, X_test, y_test)
+precision_movielens(model, X_test, y_test)
+
+
+@save "ar_weights_091.bson" model

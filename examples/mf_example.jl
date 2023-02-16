@@ -2,10 +2,12 @@ using Revise
 using SysRec
 using Flux: gradient
 using Plots
+using BSON: @save, @load
+
 
 R = [3 1 1 3 1;
      1 2 4 1 3;
-     3 1 1 3 1;
+     3 1 1 3 1; 
      4 3 5 3 3]
 
 model = MF(3, 4, 5)
@@ -24,9 +26,25 @@ model.P.weight * model.Q.weight'
 RX, Ry = ui_matrix_to_movielens_form(R)
 num_epochs = 200
 lr = 1e-2
-train_error = run_train_eval_loop!(mse_loss, model, RX, Ry; num_epochs = num_epochs, α = lr)
+train_error = run_train_eval_loop!(
+    mse_loss,
+    model, 
+    RX, Ry; 
+    num_epochs = num_epochs, 
+    α = lr, 
+    verbose = false, 
+    batch_size = 8,
+    λ = 0.1
+)
 
-plot(collect(1:num_epochs + 1), train_error, label="mse", xlabel="epoch", ylabel="train_error", linewidth = 2)
+plot(
+    collect(1:num_epochs + 1), 
+    train_error, 
+    label="mse", 
+    xlabel="epoch", 
+    ylabel="train_error", 
+    linewidth = 2
+)
 
 model.P.weight * model.Q.weight'
 convert.(Int, round.(model.P.weight * model.Q.weight'))
@@ -56,9 +74,20 @@ hidden_categories = 25
 model = MF(hidden_categories, num_users, num_items)
 mse_loss = MF_MSE_LOSS()
 num_epochs = 10
-lr = 1e-2
+lr = 1e-2 
 
-train_error, test_error = run_train_eval_loop!(mse_loss, model, X_train, y_train, X_test, y_test; num_epochs = num_epochs, α = lr)
+train_error, test_error = run_train_eval_loop!(
+    mse_loss, 
+    model, 
+    X_train, 
+    y_train; 
+    X_test = X_test, 
+    y_test = y_test,
+    num_epochs = num_epochs, 
+    α = lr,
+    batch_size = 2,
+    λ = 0.1
+)
 errors = hcat(train_error, test_error)
 
 plot(
@@ -67,27 +96,15 @@ plot(
     xlabel="epoch", 
     ylabel="mse", 
     linewidth = [2 2]
-    )
+)
+
 
 rmse_movielens(model, X_train, y_train)
-right_predicted_movielens(model, X_train, y_train)
-
+precision_movielens(model, X_train, y_train)
+    
 rmse_movielens(model, X_test, y_test)
-right_predicted_movielens(model, X_test, y_test)
+precision_movielens(model, X_test, y_test)    
 
 
 
-
-real_item_vec = [1 0 3 0 7 9 0 0 6 5]
-user_item_pairs = copy([1 3 5 6 9 10; 1 1 1 1 1 1]')
-item_rating = [1, 3, 7, 9, 6, 5]
-vec = zeros(length(real_item_vec))
-restore_item_vector!(vec, user_item_pairs, item_rating, 1)
-
-
-R = rand(15, 15)
-dummy_autorec = AutoRec(15, 5; dropout_rate = 0)
-mse_loss = AUTOREC_MSE_LOSS()
-RX, Ry = ui_matrix_to_movielens_form(R)
-rmse_movielens(dummy_autorec, RX, Ry)
-norm(dummy_autorec(R) - R, 2) / sqrt(prod(size(R)))
+@save "mf_weights_095.bson" model

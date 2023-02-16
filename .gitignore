@@ -1,3 +1,6 @@
 Manifest.toml
 test/Manifest.toml
 examples/Manifest.toml
+weights/
+recs_for_me.csv
+/movie_data
